@@ -1,0 +1,2046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OffsideX — AI VAR Detection System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:ital,wght@0,600;0,700;0,800;1,700;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #07080a;
+      --panel-bg: rgba(14, 15, 19, 0.86);
+      --panel-border: rgba(255, 255, 255, 0.13);
+      --orange: #f36c08;
+      --orange-bright: #ff8524;
+      --orange-glow: rgba(243, 108, 8, 0.55);
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.5);
+      --glass-bg: rgba(255, 255, 255, 0.085);
+      --glass-border: rgba(255, 255, 255, 0.22);
+      --ease-snappy: cubic-bezier(0.22, 1, 0.36, 1);
+      --muted: #9ca3af;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-dark);
+      color: #ffffff;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    .var-scanline {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 90;
+      opacity: 0;
+      background: linear-gradient(
+        105deg,
+        transparent 42%,
+        rgba(243, 108, 8, 0.18) 49%,
+        rgba(255, 165, 90, 0.58) 50%,
+        rgba(243, 108, 8, 0.18) 51%,
+        transparent 58%
+      );
+      transform: translateX(-110%);
+      will-change: transform, opacity;
+    }
+
+    .var-scanline.active {
+      animation: laserSweep 360ms var(--ease-snappy) forwards;
+    }
+
+    @keyframes laserSweep {
+      0%   { opacity: 1; transform: translateX(-95%); }
+      75%  { opacity: 1; }
+      100% { opacity: 0; transform: translateX(95%); }
+    }
+
+    #start-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      overflow: hidden;
+      background-color: #09090b;
+      transition:
+        transform 380ms var(--ease-snappy),
+        opacity 340ms var(--ease-snappy),
+        visibility 380ms;
+      will-change: transform, opacity;
+    }
+
+    body.in-studio #start-screen {
+      opacity: 0;
+      transform: scale(1.065);
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .hero-bg {
+      position: absolute;
+      inset: 0;
+      background: url('assets/hero_bg.png') center center / cover no-repeat;
+      transform: scale(1.005);
+      animation: bgBreathe 14s ease-in-out infinite alternate;
+      will-change: transform;
+    }
+
+    @keyframes bgBreathe {
+      0%   { transform: scale(1.005); }
+      100% { transform: scale(1.03); }
+    }
+
+    .hero-vignette {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(
+        circle at 46% 54%,
+        rgba(0, 0, 0, 0.02) 0%,
+        rgba(0, 0, 0, 0.36) 100%
+      );
+      pointer-events: none;
+    }
+
+    .viewfinder-frame {
+      position: absolute;
+      inset: 3.5% 2.9%;
+      pointer-events: none;
+      transition: inset 240ms var(--ease-snappy), transform 340ms var(--ease-snappy);
+    }
+
+    body.btn-hover .viewfinder-frame {
+      inset: 4.3% 3.5%;
+    }
+
+    body.in-studio .viewfinder-frame {
+      transform: scale(0.94);
+    }
+
+    .vf-corner {
+      position: absolute;
+      width: clamp(46px, 5.2vw, 76px);
+      height: clamp(50px, 8.8vh, 82px);
+      border-color: rgba(246, 246, 246, 0.95);
+      border-style: solid;
+      transition: border-color 200ms ease, filter 200ms ease;
+    }
+
+    body.btn-hover .vf-corner {
+      border-color: #ffffff;
+      filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.25));
+    }
+
+    .vf-tl { top: 0; left: 0; border-width: 4px 0 0 4px; border-top-left-radius: 2px; }
+    .vf-tr { top: 0; right: 0; border-width: 4px 4px 0 0; border-top-right-radius: 2px; }
+    .vf-bl { bottom: 0; left: 0; border-width: 0 0 4px 4px; border-bottom-left-radius: 2px; }
+    .vf-br { bottom: 0; right: 0; border-width: 0 4px 4px 0; border-bottom-right-radius: 2px; }
+
+    .brand-logo-wrap {
+      position: absolute;
+      top: 6.1%;
+      left: 50.4%;
+      transform: translateX(-50%);
+      width: clamp(300px, 40.5vw, 580px);
+      pointer-events: none;
+      animation: logoEnter 520ms var(--ease-snappy) both;
+    }
+
+    .brand-logo-wrap img {
+      width: 100%;
+      height: auto;
+      display: block;
+      filter: drop-shadow(0 10px 28px rgba(0, 0, 0, 0.65));
+    }
+
+    @keyframes logoEnter {
+      from { opacity: 0; transform: translate(-50%, -14px); }
+      to   { opacity: 1; transform: translate(-50%, 0); }
+    }
+
+    .var-check-btn {
+      position: absolute;
+      bottom: 6.2%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: clamp(290px, 30.2vw, 435px);
+      height: clamp(58px, 9vh, 78px);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(12px, 1.3vw, 20px);
+      background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.11) 0%,
+        rgba(255, 255, 255, 0.055) 100%
+      );
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border);
+      border-radius: 11px;
+      box-shadow:
+        0 14px 36px rgba(0, 0, 0, 0.62),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      color: #ffffff;
+      font-family: 'Barlow Semi Condensed', sans-serif;
+      font-weight: 700;
+      font-size: clamp(23px, 2.45vw, 35px);
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      cursor: pointer;
+      overflow: hidden;
+      transition:
+        transform 180ms var(--ease-snappy),
+        border-color 180ms ease,
+        background 180ms ease,
+        box-shadow 180ms ease;
+      animation: btnEnter 560ms 60ms var(--ease-snappy) both;
+      will-change: transform;
+    }
+
+    @keyframes btnEnter {
+      from { opacity: 0; transform: translate(-50%, 16px); }
+      to   { opacity: 1; transform: translate(-50%, 0); }
+    }
+
+    .var-check-btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -75%;
+      width: 50%;
+      height: 100%;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.16),
+        transparent
+      );
+      transform: skewX(-22deg);
+      transition: left 420ms var(--ease-snappy);
+      pointer-events: none;
+    }
+
+    .var-check-btn:hover {
+      transform: translate(-50%, -3px) scale(1.02);
+      border-color: rgba(243, 108, 8, 0.72);
+      background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.15) 0%,
+        rgba(243, 108, 8, 0.11) 100%
+      );
+      box-shadow:
+        0 18px 42px rgba(0, 0, 0, 0.75),
+        0 0 24px rgba(243, 108, 8, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.26);
+    }
+
+    .var-check-btn:hover::before {
+      left: 135%;
+    }
+
+    .var-check-btn:active {
+      transform: translate(-50%, 0px) scale(0.97);
+      transition-duration: 70ms;
+    }
+
+    .var-icon {
+      width: clamp(38px, 3.8vw, 54px);
+      height: auto;
+      flex-shrink: 0;
+      transition: transform 180ms var(--ease-snappy), filter 180ms ease;
+    }
+
+    .var-check-btn:hover .var-icon {
+      transform: scale(1.06);
+      filter: drop-shadow(0 0 8px var(--orange-glow));
+    }
+
+    #studio-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      overflow: hidden;
+      background-color: #07080a;
+      opacity: 0;
+      transform: scale(0.975);
+      visibility: hidden;
+      pointer-events: none;
+      transition:
+        transform 380ms var(--ease-snappy),
+        opacity 340ms var(--ease-snappy),
+        visibility 380ms;
+      will-change: transform, opacity;
+    }
+
+    body.in-studio #studio-screen {
+      opacity: 1;
+      transform: scale(1);
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .studio-bg {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: url('assets/hero_bg.png') center center / cover no-repeat;
+      filter: grayscale(100%) contrast(1.18) brightness(0.24) blur(2px);
+      transform: scale(1.06);
+      opacity: 0.7;
+    }
+
+    .studio-floodlights {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 46% 24% at 60% 4%, rgba(255, 255, 255, 0.14), transparent 72%),
+        radial-gradient(ellipse 30% 18% at 32% 16%, rgba(255, 255, 255, 0.08), transparent 70%),
+        radial-gradient(circle at 84% 38%, rgba(243, 108, 8, 0.12), transparent 46%),
+        linear-gradient(180deg, rgba(7, 8, 10, 0.45) 0%, rgba(7, 8, 10, 0.88) 60%, rgba(5, 6, 8, 0.96) 100%);
+    }
+
+    .studio-vf-frame {
+      position: absolute;
+      inset: 2.3% 1.85%;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .studio-vf-corner {
+      position: absolute;
+      width: clamp(32px, 3.6vw, 52px);
+      height: clamp(36px, 6.2vh, 58px);
+      border-color: rgba(244, 244, 245, 0.82);
+      border-style: solid;
+    }
+
+    .svf-tl { top: 0; left: 0; border-width: 2.5px 0 0 2.5px; }
+    .svf-tr { top: 0; right: 0; border-width: 2.5px 2.5px 0 0; }
+    .svf-bl { bottom: 0; left: 0; border-width: 0 0 2.5px 2.5px; }
+    .svf-br { bottom: 0; right: 0; border-width: 0 2.5px 2.5px 0; }
+
+    .hazard-stripes {
+      position: absolute;
+      bottom: 0;
+      right: 4.2%;
+      width: clamp(130px, 13vw, 200px);
+      height: 15px;
+      pointer-events: none;
+      z-index: 2;
+      background: repeating-linear-gradient(
+        -58deg,
+        rgba(243, 108, 8, 0.62) 0px,
+        rgba(243, 108, 8, 0.62) 9px,
+        transparent 9px,
+        transparent 19px
+      );
+      mask-image: linear-gradient(90deg, transparent 0%, #000 35%, #000 85%, transparent 100%);
+      -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 35%, #000 85%, transparent 100%);
+    }
+
+    .studio-container {
+      position: relative;
+      z-index: 5;
+      width: 100%;
+      height: 100%;
+      padding: clamp(22px, 3.4vh, 38px) clamp(30px, 4.4vw, 66px) clamp(24px, 3.8vh, 42px);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: clamp(12px, 2vh, 22px);
+      max-width: 1620px;
+      margin: 0 auto;
+    }
+
+    .studio-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 48px;
+    }
+
+    .studio-brand-logo {
+      height: clamp(46px, 6.8vh, 64px);
+      overflow: hidden;
+      display: flex;
+      align-items: flex-start;
+      filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.7));
+    }
+
+    .studio-brand-logo img {
+      height: 226%; /* Crop logo bottom padding */
+      width: auto;
+      display: block;
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .engine-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.13);
+      background: rgba(16, 18, 24, 0.78);
+      backdrop-filter: blur(8px);
+      font-size: 12.5px;
+      font-weight: 500;
+      color: #d1d5db;
+      letter-spacing: 0.02em;
+    }
+
+    .engine-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #f59e0b;
+      box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
+      flex-shrink: 0;
+    }
+
+    .engine-pill.online .engine-dot {
+      background: var(--emerald);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.85);
+    }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 15px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.055);
+      backdrop-filter: blur(8px);
+      color: #e5e7eb;
+      font-family: 'Barlow Semi Condensed', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 160ms ease;
+    }
+
+    .back-btn:hover {
+      border-color: var(--orange);
+      color: #ffffff;
+      background: rgba(243, 108, 8, 0.14);
+    }
+
+    .studio-main {
+      display: grid;
+      grid-template-columns: 1.24fr 0.92fr;
+      gap: clamp(16px, 2vw, 28px);
+      min-height: 0;
+    }
+
+    .viewport-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(11, 12, 16, 0.92);
+      box-shadow:
+        0 24px 56px rgba(0, 0, 0, 0.72),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .viewport-stage {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.025) 0%, transparent 72%),
+        #07080a;
+      overflow: hidden;
+    }
+
+    .viewport-stage.drag-over {
+      box-shadow: inset 0 0 0 2px var(--orange);
+      background: rgba(243, 108, 8, 0.06);
+    }
+
+    .step-hud {
+      position: absolute;
+      top: 12px;
+      left: 14px;
+      z-index: 6;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      max-width: calc(100% - 68px);
+      padding: 7px 13px;
+      border-radius: 9px;
+      background: rgba(9, 10, 14, 0.82);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      font-size: 13px;
+      font-weight: 500;
+      color: #f3f4f6;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+      pointer-events: none;
+    }
+
+    .step-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: #9ca3af;
+    }
+
+    .step-hud b {
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    .clear-frame-btn {
+      position: absolute;
+      top: 11px;
+      right: 12px;
+      z-index: 7;
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(10, 11, 15, 0.72);
+      backdrop-filter: blur(8px);
+      color: #d1d5db;
+      font-size: 15px;
+      line-height: 1;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 150ms ease;
+    }
+
+    .clear-frame-btn.visible {
+      display: inline-flex;
+    }
+
+    .clear-frame-btn:hover {
+      border-color: rgba(243, 108, 8, 0.8);
+      background: rgba(243, 108, 8, 0.2);
+      color: #ffffff;
+    }
+
+    .upload-dropzone {
+      width: 100%;
+      height: 100%;
+      padding: 40px 28px 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 14px;
+      cursor: pointer;
+      transition: background 180ms ease;
+    }
+
+    .upload-dropzone:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .upload-icon-ring {
+      width: 68px;
+      height: 68px;
+      border-radius: 16px;
+      border: 1px dashed rgba(243, 108, 8, 0.55);
+      background: rgba(243, 108, 8, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 180ms var(--ease-snappy), border-color 180ms ease;
+    }
+
+    .upload-dropzone:hover .upload-icon-ring {
+      transform: translateY(-3px) scale(1.04);
+      border-color: var(--orange);
+    }
+
+    .upload-title {
+      font-family: 'Barlow Semi Condensed', sans-serif;
+      font-size: clamp(20px, 2vw, 26px);
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #f9fafb;
+    }
+
+    .upload-sub {
+      color: var(--muted);
+      font-size: 13.5px;
+      max-width: 390px;
+      line-height: 1.5;
+    }
+
+    .upload-pill-cta {
+      margin-top: 4px;
+      padding: 9px 20px;
+      border-radius: 8px;
+      border: 1px solid rgba(243, 108, 8, 0.55);
+      background: linear-gradient(180deg, rgba(243, 108, 8, 0.22), rgba(243, 108, 8, 0.1));
+      color: #ffab6b;
+      font-family: 'Barlow Semi Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* Interactive Calibration Canvas (NO object-fit so rect matches pixels!) */
+    #var-canvas {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      display: none;
+      cursor: crosshair;
+    }
+
+    #var-result-img {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      display: none;
+    }
+
+    .analyzing-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: rgba(7, 8, 11, 0.8);
+      backdrop-filter: blur(6px);
+    }
+
+    .analyzing-overlay.active {
+      display: flex;
+    }
+
+    .analyzing-beam {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, #f36c08, #ffbe7b, #f36c08, transparent);
+      box-shadow: 0 0 20px rgba(243, 108, 8, 0.9);
+      animation: verticalBeam 1.2s ease-in-out infinite alternate;
+    }
+
+    @keyframes verticalBeam {
+      from { top: 8%; }
+      to   { top: 92%; }
+    }
+
+    .spinner-ring {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 3px solid rgba(255, 255, 255, 0.12);
+      border-top-color: var(--orange);
+      animation: spin 0.75s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .analyzing-text {
+      font-family: 'Barlow Semi Condensed', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #f9fafb;
+    }
+
+    .analyzing-sub {
+      font-size: 12.5px;
+      color: #9ca3af;
+    }
+
+    .viewport-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 14px;
+      background: rgba(8, 9, 12, 0.96);
+      border-top: 1px solid rgba(255, 255, 255, 0.09);
+      flex-wrap: wrap;
+    }
+
+    .bar-tools {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+
+    .tool-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 11px;
+      border-radius: 7px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.045);
+      color: #d1d5db;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 140ms ease;
+    }
+
+    .tool-btn:hover:not(:disabled) {
+      border-color: rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.09);
+      color: #ffffff;
+    }
+
+    .tool-btn.active {
+      border-color: var(--orange);
+      background: rgba(243, 108, 8, 0.16);
+      color: #ffab6b;
+    }
+
+    .tool-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    .analyze-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 168, 92, 0.45);
+      background: linear-gradient(135deg, #f36c08 0%, #d95200 100%);
+      box-shadow: 0 6px 20px rgba(243, 108, 8, 0.35);
+      color: #ffffff;
+      font-family: 'Barlow Semi Condensed', sans-serif;
+      font-size: 15.5px;
+      font-weight: 800;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 160ms var(--ease-snappy);
+    }
+
+    .analyze-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 26px rgba(243, 108, 8, 0.55);
+      background: linear-gradient(135deg, #ff7b17 0%, #e55c00 100%);
+    }
+
+    .analyze-btn:disabled {
+      opacity: 0.35;
+      box-shadow: none;
+      cursor: not-allowed;
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.14);
+      color: #9ca3af;
+    }
+
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      gap: clamp(14px, 2vh, 22px);
+      min-height: 0;
+    }
+
+    .decision-banner-wrap {
+      position: relative;
+      flex: 0 0 auto;
+      min-height: clamp(146px, 22vh, 198px);
+      filter: drop-shadow(0 0 18px rgba(255, 255, 255, 0.05));
+      transition: filter 300ms ease;
+    }
+
+    .decision-banner-wrap.state-offside {
+      filter: drop-shadow(0 0 26px rgba(243, 108, 8, 0.45));
+    }
+
+    .decision-banner-wrap.state-onside {
+      filter: drop-shadow(0 0 26px rgba(16, 185, 129, 0.42));
+    }
+
+    .decision-outer {
+      width: 100%;
+      height: 100%;
+      min-height: inherit;
+      padding: 2px;
+      clip-path: polygon(
+        18px 0%, calc(100% - 18px) 0%,
+        100% 18px, 100% calc(100% - 18px),
+        calc(100% - 18px) 100%, 18px 100%,
+        0% calc(100% - 18px), 0% 18px
+      );
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08));
+      transition: background 300ms ease;
+    }
+
+    .state-offside .decision-outer {
+      background: linear-gradient(135deg, #ff8524 0%, #f36c08 48%, #ff700a 100%);
+    }
+
+    .state-onside .decision-outer {
+      background: linear-gradient(135deg, #34d399 0%, #10b981 55%, #059669 100%);
+    }
+
+    .decision-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: calc(clamp(146px, 22vh, 198px) - 4px);
+      clip-path: polygon(
+        17px 0%, calc(100% - 17px) 0%,
+        100% 17px, 100% calc(100% - 17px),
+        calc(100% - 17px) 100%, 17px 100%,
+        0% calc(100% - 17px), 0% 17px
+      );
+      background:
+        radial-gradient(circle at 84% 52%, rgba(255, 255, 255, 0.04), transparent 62%),
+        linear-gradient(135deg, #12141a 0%, #0b0c10 100%);
+      display: flex;
+      align-items: center;
+      padding: clamp(18px, 2.5vh, 28px) clamp(20px, 2.6vw, 34px);
+      gap: clamp(18px, 2.2vw, 28px);
+      overflow: hidden;
+    }
+
+    .state-offside .decision-inner {
+      background:
+        radial-gradient(circle at 86% 52%, rgba(243, 108, 8, 0.24), transparent 62%),
+        radial-gradient(circle at 14% 50%, rgba(243, 108, 8, 0.14), transparent 55%),
+        linear-gradient(135deg, #1c120d 0%, #0d0a09 100%);
+    }
+
+    .state-onside .decision-inner {
+      background:
+        radial-gradient(circle at 86% 52%, rgba(16, 185, 129, 0.22), transparent 62%),
+        radial-gradient(circle at 14% 50%, rgba(16, 185, 129, 0.12), transparent 55%),
+        linear-gradient(135deg, #0c1915 0%, #080d0b 100%);
+    }
+
+    .corner-wedge {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      pointer-events: none;
+      opacity: 0.25;
+      background: #9ca3af;
+      transition: background 300ms ease, opacity 300ms ease;
+    }
+
+    .state-offside .corner-wedge { background: var(--orange); opacity: 0.95; }
+    .state-onside  .corner-wedge { background: var(--emerald); opacity: 0.95; }
+
+    .cw-tl { top: 0; left: 0; clip-path: polygon(0 0, 100% 0, 0 100%); }
+    .cw-tr { top: 0; right: 0; clip-path: polygon(0 0, 100% 0, 100% 100%); }
+    .cw-bl { bottom: 0; left: 0; clip-path: polygon(0 0, 0 100%, 100% 100%); }
+    .cw-br { bottom: 0; right: 0; clip-path: polygon(100% 0, 0 100%, 100% 100%); }
+
+    .decision-icon-box {
+      width: clamp(64px, 6.2vw, 84px);
+      height: clamp(64px, 6.2vw, 84px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .decision-divider {
+      width: 1.5px;
+      align-self: stretch;
+      margin: 6px 0;
+      background: rgba(255, 255, 255, 0.18);
+      flex-shrink: 0;
+    }
+
+    .decision-copy {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .decision-headline {
+      font-family: 'Barlow Semi Condensed', sans-serif;
+      font-size: clamp(40px, 4.4vw, 62px);
+      font-weight: 800;
+      font-style: italic;
+      line-height: 0.94;
+      letter-spacing: 0.025em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .decision-headline .w-light {
+      color: #ffffff;
+    }
+
+    .state-standby .decision-headline .w-light {
+      color: #d1d5db;
+    }
+
+    .decision-headline .w-accent {
+      color: #9ca3af;
+    }
+
+    .state-offside .decision-headline .w-accent {
+      background: linear-gradient(180deg, #ffa44d 0%, #f36c08 75%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 14px rgba(243, 108, 8, 0.35));
+    }
+
+    .state-onside .decision-headline .w-accent {
+      background: linear-gradient(180deg, #6ee7b7 0%, #10b981 75%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.35));
+    }
+
+    .decision-sub {
+      font-family: 'Barlow Semi Condensed', sans-serif;
+      font-size: clamp(13px, 1.25vw, 17px);
+      font-weight: 600;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: #d1d5db;
+    }
+
+    .pytorch-card {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      border-radius: 14px;
+      border: 1px solid var(--panel-border);
+      background:
+        radial-gradient(circle at 22% 50%, rgba(255, 255, 255, 0.025), transparent 60%),
+        rgba(14, 15, 19, 0.88);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.6);
+      display: grid;
+      grid-template-columns: 1fr auto 1.18fr;
+      align-items: center;
+      padding: clamp(16px, 2.4vh, 26px) clamp(18px, 2.2vw, 28px);
+      gap: clamp(16px, 2vw, 24px);
+      overflow: hidden;
+    }
+
+    .pytorch-card::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, transparent 48%, rgba(243, 108, 8, 0.92) 52%);
+      pointer-events: none;
+    }
+
+    .donut-wrap {
+      position: relative;
+      width: clamp(118px, 12vw, 154px);
+      height: clamp(118px, 12vw, 154px);
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .donut-svg {
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+
+    .donut-track {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.11);
+      stroke-width: 11;
+    }
+
+    .donut-progress {
+      fill: none;
+      stroke: var(--orange);
+      stroke-width: 11;
+      stroke-linecap: round;
+      stroke-dasharray: 339.292;
+      stroke-dashoffset: 339.292;
+      transition:
+        stroke-dashoffset 680ms var(--ease-snappy),
+        stroke 280ms ease;
+    }
+
+    .donut-progress.is-onside {
+      stroke: var(--emerald);
+    }
+
+    .donut-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .donut-pct {
+      font-family: 'Barlow Semi Condensed', sans-serif;
+      font-size: clamp(26px, 2.7vw, 35px);
+      font-weight: 800;
+      line-height: 1;
+      color: #ffffff;
+    }
+
+    .donut-caption {
+      margin-top: 3px;
+      font-family: 'Barlow Semi Condensed', sans-serif;
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .card-v-divider {
+      width: 1px;
+      height: 68%;
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .pt-details {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: clamp(10px, 1.4vh, 16px);
+      min-width: 0;
+    }
+
+    .pt-header-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .pt-net-icon {
+      width: 34px;
+      height: 34px;
+      flex-shrink: 0;
+    }
+
+    .pt-title {
+      font-size: clamp(15px, 1.4vw, 19px);
+      font-weight: 500;
+      color: #e5e7eb;
+    }
+
+    .pt-decision-line {
+      font-size: clamp(18px, 1.85vw, 24px);
+      font-weight: 500;
+      color: #d1d5db;
+      white-space: nowrap;
+    }
+
+    .pt-decision-val {
+      font-weight: 700;
+      color: #9ca3af;
+      margin-left: 4px;
+    }
+
+    .pt-decision-val.is-offside { color: var(--orange); }
+    .pt-decision-val.is-onside  { color: var(--emerald); }
+
+    .pt-meta {
+      font-size: 12px;
+      color: #7c8494;
+      letter-spacing: 0.02em;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: clamp(12px, 1.5vw, 20px);
+    }
+
+    .stat-card {
+      border-radius: 13px;
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      background: rgba(14, 15, 19, 0.84);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+      padding: clamp(12px, 1.6vh, 18px) clamp(14px, 1.6vw, 22px);
+      display: flex;
+      align-items: center;
+      gap: clamp(12px, 1.3vw, 18px);
+      min-width: 0;
+    }
+
+    .stat-icon {
+      width: clamp(28px, 2.3vw, 34px);
+      height: clamp(28px, 2.3vw, 34px);
+      flex-shrink: 0;
+    }
+
+    .stat-body {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .stat-label {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: #9ca3af;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .stat-value {
+      font-family: 'Barlow Semi Condensed', sans-serif;
+      font-size: clamp(21px, 2.1vw, 28px);
+      font-weight: 700;
+      line-height: 1.08;
+      color: #f9fafb;
+      white-space: nowrap;
+    }
+
+    .stat-subtag {
+      font-size: 11px;
+      color: #ff9c52;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    .status-underline {
+      margin-top: 3px;
+      width: 68px;
+      height: 3px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.15);
+      transition: background 250ms ease, box-shadow 250ms ease;
+    }
+
+    .status-underline.confirmed {
+      background: var(--orange);
+      box-shadow: 0 0 10px rgba(243, 108, 8, 0.75);
+    }
+
+    .status-underline.confirmed.is-onside {
+      background: var(--emerald);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.75);
+    }
+
+    .studio-toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translate(-50%, 16px);
+      z-index: 95;
+      padding: 11px 18px;
+      border-radius: 10px;
+      border: 1px solid rgba(243, 108, 8, 0.55);
+      background: rgba(20, 14, 12, 0.94);
+      backdrop-filter: blur(10px);
+      color: #ffd8bd;
+      font-size: 13.5px;
+      font-weight: 500;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease, transform 220ms var(--ease-snappy);
+      max-width: min(92vw, 560px);
+      text-align: center;
+    }
+
+    .studio-toast.show {
+      opacity: 1;
+      transform: translate(-50%, 0);
+      pointer-events: auto;
+    }
+
+    @media (max-width: 980px) {
+      body.in-studio {
+        overflow-y: auto;
+      }
+      #studio-screen {
+        overflow-y: auto;
+      }
+      .studio-container {
+        height: auto;
+        min-height: 100%;
+      }
+      .studio-main {
+        grid-template-columns: 1fr;
+      }
+      .viewport-stage {
+        min-height: 300px;
+      }
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 560px) {
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+      .pytorch-card {
+        grid-template-columns: 1fr;
+        text-align: center;
+      }
+      .card-v-divider {
+        width: 70%;
+        height: 1px;
+        margin: 0 auto;
+      }
+      .pt-header-row {
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="var-scanline" class="var-scanline"></div>
+
+  <section id="start-screen">
+    <div class="hero-bg"></div>
+    <div class="hero-vignette"></div>
+
+    <div class="viewfinder-frame">
+      <div class="vf-corner vf-tl"></div>
+      <div class="vf-corner vf-tr"></div>
+      <div class="vf-corner vf-bl"></div>
+      <div class="vf-corner vf-br"></div>
+    </div>
+
+    <div class="brand-logo-wrap">
+      <img src="assets/logo.png" alt="OffsideX - AI VAR Detection System" draggable="false" />
+    </div>
+
+    <button id="btn-var-check" class="var-check-btn" type="button">
+      <span>VAR CHECK</span>
+      <svg class="var-icon" viewBox="0 0 64 46" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect x="3" y="3" width="58" height="34" rx="3" stroke="#f36c08" stroke-width="3.6" />
+        <text x="32" y="25.5" text-anchor="middle" fill="#f36c08"
+              font-family="'Barlow Semi Condensed', Arial, sans-serif"
+              font-weight="800" font-size="16.5" letter-spacing="0.5">VAR</text>
+        <line x1="16" y1="43" x2="48" y2="43" stroke="#f36c08" stroke-width="3.4" stroke-linecap="round" />
+      </svg>
+    </button>
+  </section>
+
+  <section id="studio-screen">
+    <div class="studio-bg"></div>
+    <div class="studio-floodlights"></div>
+
+    <div class="studio-vf-frame">
+      <div class="studio-vf-corner svf-tl"></div>
+      <div class="studio-vf-corner svf-tr"></div>
+      <div class="studio-vf-corner svf-bl"></div>
+      <div class="studio-vf-corner svf-br"></div>
+    </div>
+    <div class="hazard-stripes" aria-hidden="true"></div>
+
+    <div class="studio-container">
+      <header class="studio-topbar">
+        <div class="studio-brand-logo">
+          <img src="assets/logo.png" alt="OffsideX - AI VAR Detection System" draggable="false" />
+        </div>
+        <div class="topbar-actions">
+          <div id="engine-pill" class="engine-pill">
+            <span class="engine-dot"></span>
+            <span id="engine-status-text">Checking AI Engine...</span>
+          </div>
+          <button id="btn-back-home" class="back-btn" type="button">← Start</button>
+        </div>
+      </header>
+
+      <main class="studio-main">
+
+        <section class="viewport-card">
+          <div id="viewport-stage" class="viewport-stage">
+            <div id="step-hud" class="step-hud">
+              <span id="step-dot" class="step-dot"></span>
+              <span id="step-text"><b>Upload Match Frame</b> to begin 4-point VAR calibration</span>
+            </div>
+
+            <button id="btn-clear-frame" class="clear-frame-btn" type="button" title="Clear Frame">✕</button>
+
+            <div id="upload-dropzone" class="upload-dropzone">
+              <div class="upload-icon-ring">
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#f36c08" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+              </div>
+              <div class="upload-title">Upload Match Frame</div>
+              <p class="upload-sub">
+                Drag &amp; drop any football offside freeze-frame here, or click to select an image from your device.
+              </p>
+              <span class="upload-pill-cta">Select Image (JPG / PNG)</span>
+            </div>
+
+            <input id="file-input" type="file" accept="image/*" hidden />
+
+            <canvas id="var-canvas"></canvas>
+
+            <img id="var-result-img" alt="Annotated VAR Output" draggable="false" />
+
+            <div id="analyzing-overlay" class="analyzing-overlay">
+              <div class="analyzing-beam"></div>
+              <div class="spinner-ring"></div>
+              <div class="analyzing-text">Running Semi-Automated VAR</div>
+              <div class="analyzing-sub">YOLOv8x · YOLOv8-Pose · CIE LAB · PyTorch ResidualOffsideNet</div>
+            </div>
+          </div>
+
+          <div class="viewport-bar">
+            <div class="bar-tools">
+              <button id="btn-new-img" class="tool-btn" type="button" title="Upload New Frame">
+                <span>↑</span><span>Upload</span>
+              </button>
+              <button id="btn-flip" class="tool-btn" type="button" disabled title="Flip Attack Direction Left/Right">
+                <span>⇄</span><span>Flip</span>
+              </button>
+              <button id="btn-zero" class="tool-btn" type="button" disabled title="Force Vertical 0° Offside Line">
+                <span>┃</span><span>Vertical 0°</span>
+              </button>
+              <button id="btn-reset" class="tool-btn" type="button" disabled title="Clear Calibration Clicks">
+                <span>↺</span><span>Reset</span>
+              </button>
+              <button id="btn-toggle-view" class="tool-btn" type="button" disabled title="Switch between Calibration Clicks and VAR Result">
+                <span>👁</span><span id="toggle-view-label">Calibration</span>
+              </button>
+            </div>
+            <button id="btn-analyze" class="analyze-btn" type="button" disabled>
+              <span>⚡</span><span>Analyze VAR</span>
+            </button>
+          </div>
+        </section>
+
+        <aside class="right-panel">
+
+          <div id="decision-banner" class="decision-banner-wrap state-standby">
+            <div class="decision-outer">
+              <div class="decision-inner">
+                <div class="corner-wedge cw-tl"></div>
+                <div class="corner-wedge cw-tr"></div>
+                <div class="corner-wedge cw-bl"></div>
+                <div class="corner-wedge cw-br"></div>
+
+                <div id="decision-icon-box" class="decision-icon-box">
+                </div>
+
+                <div class="decision-divider"></div>
+
+                <div class="decision-copy">
+                  <div id="decision-headline" class="decision-headline">
+                    <span class="w-light">STAND</span><span class="w-accent">BY</span>
+                  </div>
+                  <div id="decision-sub" class="decision-sub">VAR DECISION</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pytorch-card">
+            <div class="donut-wrap">
+              <svg class="donut-svg" viewBox="0 0 140 140">
+                <circle class="donut-track" cx="70" cy="70" r="54" />
+                <circle id="conf-ring" class="donut-progress" cx="70" cy="70" r="54" />
+              </svg>
+              <div class="donut-center">
+                <div id="conf-value" class="donut-pct">--%</div>
+                <div class="donut-caption">CONFIDENCE</div>
+              </div>
+            </div>
+
+            <div class="card-v-divider"></div>
+
+            <div class="pt-details">
+              <div class="pt-header-row">
+                <svg class="pt-net-icon" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <line x1="7" y1="9" x2="18" y2="6" stroke="#f36c08" stroke-width="1.6" />
+                  <line x1="7" y1="9" x2="18" y2="18" stroke="#f36c08" stroke-width="1.6" />
+                  <line x1="7" y1="27" x2="18" y2="18" stroke="#f36c08" stroke-width="1.6" />
+                  <line x1="7" y1="27" x2="18" y2="30" stroke="#f36c08" stroke-width="1.6" />
+                  <line x1="18" y1="6" x2="29" y2="18" stroke="#f36c08" stroke-width="1.6" />
+                  <line x1="18" y1="18" x2="29" y2="18" stroke="#f36c08" stroke-width="1.6" />
+                  <line x1="18" y1="30" x2="29" y2="18" stroke="#f36c08" stroke-width="1.6" />
+                  <circle cx="7" cy="9" r="3" fill="#0d0e12" stroke="#f36c08" stroke-width="1.8" />
+                  <circle cx="7" cy="27" r="3" fill="#0d0e12" stroke="#f36c08" stroke-width="1.8" />
+                  <circle cx="18" cy="6" r="2.7" fill="#0d0e12" stroke="#f36c08" stroke-width="1.8" />
+                  <circle cx="18" cy="18" r="2.7" fill="#f36c08" />
+                  <circle cx="18" cy="30" r="2.7" fill="#0d0e12" stroke="#f36c08" stroke-width="1.8" />
+                  <circle cx="29" cy="18" r="3.2" fill="#0d0e12" stroke="#f36c08" stroke-width="1.8" />
+                </svg>
+                <span class="pt-title">PyTorch Analysis</span>
+              </div>
+
+              <div class="pt-decision-line">
+                Decision: <span id="pt-decision-val" class="pt-decision-val">Pending</span>
+              </div>
+              <div id="pt-meta" class="pt-meta">ResidualOffsideNet · Awaiting input</div>
+            </div>
+          </div>
+
+        </aside>
+      </main>
+
+      <section class="stats-grid">
+        <div class="stat-card">
+          <svg class="stat-icon" viewBox="0 0 32 32" fill="none">
+            <circle cx="19" cy="6.5" r="2.6" fill="#f36c08" />
+            <path d="M12 13.5l5-2 3.5 3.5 4-1" stroke="#f36c08" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M16.5 13l-2.5 6.5-5.5 5" stroke="#f36c08" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M15.5 19l5.5 3.5-1.5 5" stroke="#f36c08" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <div class="stat-body">
+            <div class="stat-label">Detected Squads</div>
+            <div id="stat-squads" class="stat-value">—</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <svg class="stat-icon" viewBox="0 0 32 32" fill="none">
+            <rect x="4" y="4" width="24" height="24" rx="3" stroke="#f36c08" stroke-width="2" />
+            <path d="M9.5 15V9.5H15M22.5 17v5.5H17M10 10l12 12" stroke="#f36c08" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <div class="stat-body">
+            <div class="stat-label">Offside Margin</div>
+            <div id="stat-margin" class="stat-value">—</div>
+            <div id="stat-margin-tag" class="stat-subtag" style="display:none;">FIFA Ball Line Active</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <svg class="stat-icon" viewBox="0 0 32 32" fill="none">
+            <circle cx="16" cy="16" r="10.5" stroke="#f36c08" stroke-width="2" />
+            <circle cx="16" cy="16" r="4.5" stroke="#f36c08" stroke-width="1.8" />
+            <circle cx="16" cy="16" r="1.8" fill="#f36c08" />
+            <path d="M16 2.5v5M16 24.5v5M2.5 16h5M24.5 16h5" stroke="#f36c08" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          <div class="stat-body">
+            <div class="stat-label">VAR Line Slope</div>
+            <div id="stat-slope" class="stat-value">—</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <svg class="stat-icon" viewBox="0 0 32 32" fill="none">
+            <circle cx="16" cy="16" r="11" stroke="#f36c08" stroke-width="2.2" />
+            <path d="M11 16.5l3.5 3.5L21.5 12" stroke="#f36c08" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <div class="stat-body">
+            <div class="stat-label">Status &amp; GK</div>
+            <div id="stat-status" class="stat-value">Standby</div>
+            <div id="status-underline" class="status-underline"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <div id="studio-toast" class="studio-toast"></div>
+
+  <script>
+    const btnVarCheck = document.getElementById('btn-var-check');
+    const btnBackHome = document.getElementById('btn-back-home');
+    const scanline    = document.getElementById('var-scanline');
+
+    btnVarCheck.addEventListener('mouseenter', () => document.body.classList.add('btn-hover'));
+    btnVarCheck.addEventListener('mouseleave', () => document.body.classList.remove('btn-hover'));
+
+    function triggerScanSweep() {
+      scanline.classList.remove('active');
+      void scanline.offsetWidth;
+      scanline.classList.add('active');
+    }
+
+    btnVarCheck.addEventListener('click', () => {
+      document.body.classList.remove('btn-hover');
+      triggerScanSweep();
+      document.body.classList.add('in-studio');
+    });
+
+    btnBackHome.addEventListener('click', () => {
+      triggerScanSweep();
+      document.body.classList.remove('in-studio');
+    });
+
+    const DONUT_CIRC = 339.292; // 2 * pi * 54
+
+    const state = {
+      file: null,
+      img: null,
+      pts: [],          // Aligned normalized clicks
+      flipped: false,
+      zeroSlope: false,
+      viewMode: 'calibration',
+      resultB64: null,
+      analyzing: false,
+      backendOnline: false,
+    };
+
+    const elEnginePill    = document.getElementById('engine-pill');
+    const elEngineText    = document.getElementById('engine-status-text');
+    const elViewportStage = document.getElementById('viewport-stage');
+    const elStepDot       = document.getElementById('step-dot');
+    const elStepText      = document.getElementById('step-text');
+    const elBtnClear      = document.getElementById('btn-clear-frame');
+    const elDropzone      = document.getElementById('upload-dropzone');
+    const elFileInput     = document.getElementById('file-input');
+    const elCanvas        = document.getElementById('var-canvas');
+    const ctx             = elCanvas.getContext('2d');
+    const elResultImg     = document.getElementById('var-result-img');
+    const elAnalyzing     = document.getElementById('analyzing-overlay');
+
+    const elBtnNewImg     = document.getElementById('btn-new-img');
+    const elBtnFlip       = document.getElementById('btn-flip');
+    const elBtnZero       = document.getElementById('btn-zero');
+    const elBtnReset      = document.getElementById('btn-reset');
+    const elBtnToggleView = document.getElementById('btn-toggle-view');
+    const elToggleLabel   = document.getElementById('toggle-view-label');
+    const elBtnAnalyze    = document.getElementById('btn-analyze');
+
+    const elBanner        = document.getElementById('decision-banner');
+    const elIconBox       = document.getElementById('decision-icon-box');
+    const elHeadline      = document.getElementById('decision-headline');
+    const elDecisionSub   = document.getElementById('decision-sub');
+    const elConfRing      = document.getElementById('conf-ring');
+    const elConfValue     = document.getElementById('conf-value');
+    const elPtDecisionVal = document.getElementById('pt-decision-val');
+    const elPtMeta        = document.getElementById('pt-meta');
+
+    const elStatSquads    = document.getElementById('stat-squads');
+    const elStatMargin    = document.getElementById('stat-margin');
+    const elStatMarginTag = document.getElementById('stat-margin-tag');
+    const elStatSlope     = document.getElementById('stat-slope');
+    const elStatStatus    = document.getElementById('stat-status');
+    const elUnderline     = document.getElementById('status-underline');
+    const elToast         = document.getElementById('studio-toast');
+
+    let toastTimer = null;
+    function showToast(msg) {
+      elToast.textContent = msg;
+      elToast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => elToast.classList.remove('show'), 4600);
+    }
+
+    const ICONS = {
+      standby: `
+        <svg viewBox="0 0 64 48" width="68" height="52" fill="none">
+          <rect x="4" y="4" width="56" height="34" rx="4" stroke="#9ca3af" stroke-width="3.2" />
+          <text x="32" y="26.5" text-anchor="middle" fill="#f36c08"
+                font-family="'Barlow Semi Condensed', sans-serif" font-weight="800" font-size="16" letter-spacing="1">VAR</text>
+          <line x1="18" y1="44" x2="46" y2="44" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" />
+        </svg>`,
+      offside: `
+        <svg viewBox="0 0 64 58" width="68" height="62" fill="none">
+          <path d="M32 5L58.5 51C59.4 52.6 58.2 54.5 56.4 54.5H7.6C5.8 54.5 4.6 52.6 5.5 51L32 5Z"
+                stroke="#f36c08" stroke-width="4.2" stroke-linejoin="round" fill="rgba(243,108,8,0.08)" />
+          <line x1="32" y1="21" x2="32" y2="36.5" stroke="#f36c08" stroke-width="4.4" stroke-linecap="round" />
+          <circle cx="32" cy="44.5" r="2.6" fill="#f36c08" />
+        </svg>`,
+      onside: `
+        <svg viewBox="0 0 64 64" width="66" height="66" fill="none">
+          <circle cx="32" cy="32" r="25" stroke="#10b981" stroke-width="4.2" fill="rgba(16,185,129,0.09)" />
+          <path d="M21 32.5L28.5 40L44 24.5" stroke="#10b981" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>`
+    };
+
+    async function checkBackendHealth() {
+      if (window.location.protocol === 'file:') {
+        state.backendOnline = false;
+        elEnginePill.classList.remove('online');
+        elEngineText.textContent = 'UI Preview (Run server.py or Colab)';
+        return;
+      }
+      try {
+        const res = await fetch('/api/health', { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (data && data.ok) {
+          state.backendOnline = true;
+          elEnginePill.classList.add('online');
+          const dev = (data.device || 'ready').toUpperCase();
+          elEngineText.textContent = `AI Engine Ready · ${dev}`;
+          return;
+        }
+      } catch (_) {}
+      state.backendOnline = false;
+      elEnginePill.classList.remove('online');
+      elEngineText.textContent = 'Backend Offline';
+    }
+    checkBackendHealth();
+
+    function resetDecisionCards() {
+      elBanner.className = 'decision-banner-wrap state-standby';
+      elIconBox.innerHTML = ICONS.standby;
+      elHeadline.innerHTML = '<span class="w-light">STAND</span><span class="w-accent">BY</span>';
+      elDecisionSub.textContent = 'VAR DECISION';
+
+      elConfRing.style.strokeDashoffset = String(DONUT_CIRC);
+      elConfRing.classList.remove('is-onside');
+      elConfValue.textContent = '--%';
+
+      elPtDecisionVal.textContent = 'Pending';
+      elPtDecisionVal.className = 'pt-decision-val';
+      elPtMeta.textContent = 'ResidualOffsideNet · Awaiting calibration';
+
+      elStatSquads.textContent = '—';
+      elStatMargin.textContent = '—';
+      elStatMarginTag.style.display = 'none';
+      updateLiveSlopeStat();
+      elStatStatus.textContent = 'Standby';
+      elUnderline.className = 'status-underline';
+    }
+
+    function updateLiveSlopeStat() {
+      if (state.zeroSlope) {
+        elStatSlope.textContent = '0.00°';
+        return;
+      }
+      if (state.pts.length >= 4 && state.img) {
+        const dx = (state.pts[3].nx - state.pts[2].nx) * elCanvas.width;
+        const dy = (state.pts[3].ny - state.pts[2].ny) * elCanvas.height;
+        if (Math.abs(dy) > 3) {
+          const s = Math.max(-20, Math.min(20, dx / dy));
+          elStatSlope.textContent = (s >= 0 ? '+' : '') + s.toFixed(2);
+          return;
+        }
+      }
+      elStatSlope.textContent = '—';
+    }
+
+    function applyAnalysisResult(data) {
+      const isOffside = data.decision === 'OFFSIDE';
+      const conf = Number(data.confidence).toFixed(1);
+      const probOff = (Number(data.prob_offside) * 100).toFixed(1);
+      const diffX = Number(data.var_diff_x);
+      const slope = Number(data.pitch_slope);
+
+      elBanner.className = 'decision-banner-wrap ' + (isOffside ? 'state-offside' : 'state-onside');
+      elIconBox.innerHTML = isOffside ? ICONS.offside : ICONS.onside;
+      elHeadline.innerHTML = isOffside
+        ? '<span class="w-light">OFF</span><span class="w-accent">SIDE</span>'
+        : '<span class="w-light">ON</span><span class="w-accent">SIDE</span>';
+      elDecisionSub.textContent = data.ball_is_line ? 'VAR DECISION · FIFA BALL LINE' : 'VAR DECISION';
+
+      const frac = Math.max(0, Math.min(1, Number(data.confidence) / 100));
+      elConfRing.style.strokeDashoffset = String(DONUT_CIRC * (1 - frac));
+      elConfRing.classList.toggle('is-onside', !isOffside);
+      elConfValue.textContent = `${conf}%`;
+
+      elPtDecisionVal.textContent = isOffside ? 'Offside' : 'Onside';
+      elPtDecisionVal.className = 'pt-decision-val ' + (isOffside ? 'is-offside' : 'is-onside');
+      elPtMeta.textContent = `P(Offside): ${probOff}% · ResidualOffsideNet`;
+
+      elStatSquads.textContent = `${data.n_att} ATT · ${data.n_def} DEF`;
+      elStatMargin.textContent = `${diffX >= 0 ? '+' : ''}${diffX.toFixed(3)} w`;
+      elStatMarginTag.style.display = data.ball_is_line ? 'block' : 'none';
+      elStatSlope.textContent = `${slope >= 0 ? '+' : ''}${slope.toFixed(2)}`;
+      elStatStatus.textContent = data.gk ? 'Confirmed · GK' : 'Confirmed';
+      elUnderline.className = 'status-underline confirmed' + (isOffside ? '' : ' is-onside');
+
+      state.resultB64 = data.result_b64;
+      state.viewMode = 'result';
+      renderStudioUI();
+    }
+
+    function isCalibrationComplete() {
+      return state.pts.length >= 4 || (state.zeroSlope && state.pts.length >= 2);
+    }
+
+    function updateStepHud() {
+      if (!state.img) {
+        elStepDot.style.background = '#9ca3af';
+        elStepText.innerHTML = '<b>Upload Match Frame</b> to begin 4-point VAR calibration';
+        return;
+      }
+      if (state.viewMode === 'result' && state.resultB64) {
+        elStepDot.style.background = '#10b981';
+        elStepText.innerHTML = '<b>VAR Verified</b> · Toggle view or adjust calibration anytime';
+        return;
+      }
+      const n = state.pts.length;
+      if (n === 0) {
+        elStepDot.style.background = '#ff2e4c';
+        elStepText.innerHTML = '<b>1/4</b> Click any <b>ATTACKER</b> jersey (attacking right →)';
+      } else if (n === 1) {
+        elStepDot.style.background = '#3b82f6';
+        elStepText.innerHTML = '<b>2/4</b> Click any <b>DEFENDER</b> jersey';
+      } else if (n === 2 && !state.zeroSlope) {
+        elStepDot.style.background = '#ffd740';
+        elStepText.innerHTML = '<b>3/4</b> Click <b>Point 1</b> on penalty box / grass cut line (or click Vertical 0°)';
+      } else if (n === 3 && !state.zeroSlope) {
+        elStepDot.style.background = '#ffd740';
+        elStepText.innerHTML = '<b>4/4</b> Click <b>Point 2</b> on the same pitch line';
+      } else {
+        elStepDot.style.background = '#10b981';
+        elStepText.innerHTML = '<b>Calibration Complete</b> · Click <b>Analyze VAR</b> to run AI';
+      }
+    }
+
+    function drawRoundedBox(x, y, w, h, r) {
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(x, y, w, h, r);
+      } else {
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      }
+    }
+
+    function redrawCalibrationCanvas() {
+      if (!state.img) return;
+      const W = elCanvas.width;
+      const H = elCanvas.height;
+      const sc = Math.max(1, W / 960);
+
+      ctx.save();
+      ctx.clearRect(0, 0, W, H);
+      if (state.flipped) {
+        ctx.translate(W, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(state.img, 0, 0, W, H);
+      ctx.restore();
+
+      ctx.save();
+      const padX = 12 * sc, padY = H - 38 * sc;
+      const pillW = 162 * sc, pillH = 26 * sc;
+      ctx.fillStyle = 'rgba(10, 12, 16, 0.78)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.lineWidth = 1.2 * sc;
+      drawRoundedBox(padX, padY, pillW, pillH, 6 * sc);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `700 ${Math.round(12 * sc)}px 'Inter', sans-serif`;
+      ctx.textBaseline = 'middle';
+      ctx.fillText('ATTACKING RIGHT →', padX + 12 * sc, padY + pillH / 2 + 0.5);
+      ctx.restore();
+
+      if (state.pts.length >= 4 && !state.zeroSlope) {
+        const x1 = state.pts[2].nx * W, y1 = state.pts[2].ny * H;
+        const x2 = state.pts[3].nx * W, y2 = state.pts[3].ny * H;
+        if (Math.abs(y2 - y1) > 3) {
+          const s = (x2 - x1) / (y2 - y1);
+          const xTop = x1 + s * (0 - y1);
+          const xBot = x1 + s * (H - y1);
+
+          ctx.save();
+          ctx.lineWidth = 5 * sc;
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+          ctx.beginPath();
+          ctx.moveTo(xTop, 0);
+          ctx.lineTo(xBot, H);
+          ctx.stroke();
+
+          ctx.lineWidth = 2.8 * sc;
+          ctx.strokeStyle = '#ffd740';
+          ctx.setLineDash([10 * sc, 6 * sc]);
+          ctx.beginPath();
+          ctx.moveTo(xTop, 0);
+          ctx.lineTo(xBot, H);
+          ctx.stroke();
+          ctx.restore();
+        }
+      } else if (state.zeroSlope && state.pts.length >= 2) {
+        const xm = Math.round(0.65 * W);
+        ctx.save();
+        ctx.lineWidth = 2.8 * sc;
+        ctx.strokeStyle = '#c084fc';
+        ctx.setLineDash([9 * sc, 6 * sc]);
+        ctx.beginPath();
+        ctx.moveTo(xm, 0);
+        ctx.lineTo(xm, H);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      const META = [
+        { color: '#ff1744', label: 'ATT' },
+        { color: '#2979ff', label: 'DEF' },
+        { color: '#ffd740', label: 'L1' },
+        { color: '#ffd740', label: 'L2' },
+      ];
+
+      state.pts.slice(0, 4).forEach((pt, idx) => {
+        const x = pt.nx * W;
+        const y = pt.ny * H;
+        const { color, label } = META[idx];
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, 7.5 * sc, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = 2.2 * sc;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        ctx.font = `700 ${Math.round(12 * sc)}px 'Inter', sans-serif`;
+        const tw = ctx.measureText(label).width;
+        const bx = Math.min(W - tw - 16 * sc, x + 11 * sc);
+        const by = Math.max(8 * sc, y - 10 * sc);
+        ctx.fillStyle = 'rgba(9, 10, 14, 0.85)';
+        drawRoundedBox(bx, by, tw + 10 * sc, 19 * sc, 4 * sc);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, bx + 5 * sc, by + 9.5 * sc);
+        ctx.restore();
+      });
+    }
+
+    function renderStudioUI() {
+      const hasImg = Boolean(state.img);
+      const hasRes = Boolean(state.resultB64);
+
+      elDropzone.style.display = hasImg ? 'none' : 'flex';
+      elBtnClear.classList.toggle('visible', hasImg);
+
+      if (!hasImg) {
+        elCanvas.style.display = 'none';
+        elResultImg.style.display = 'none';
+      } else if (state.viewMode === 'result' && hasRes) {
+        elCanvas.style.display = 'none';
+        elResultImg.src = state.resultB64;
+        elResultImg.style.display = 'block';
+      } else {
+        elResultImg.style.display = 'none';
+        elCanvas.style.display = 'block';
+        redrawCalibrationCanvas();
+      }
+
+      elBtnFlip.disabled = !hasImg || state.analyzing;
+      elBtnZero.disabled = !hasImg || state.analyzing;
+      elBtnReset.disabled = !hasImg || state.pts.length === 0 || state.analyzing;
+      elBtnToggleView.disabled = !hasRes || state.analyzing;
+      elBtnAnalyze.disabled = !hasImg || !isCalibrationComplete() || state.analyzing;
+
+      elBtnFlip.classList.toggle('active', state.flipped);
+      elBtnZero.classList.toggle('active', state.zeroSlope);
+      elBtnToggleView.classList.toggle('active', hasRes && state.viewMode === 'result');
+      elToggleLabel.textContent = state.viewMode === 'result' ? 'Show Calibration' : 'Show Result';
+
+      elAnalyzing.classList.toggle('active', state.analyzing);
+      updateStepHud();
+      if (!hasRes) updateLiveSlopeStat();
+    }
+
+    function loadImageFile(file) {
+      if (!file || !file.type.startsWith('image/')) {
+        showToast('Please select a valid image file (PNG, JPG, WEBP).');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          state.file = file;
+          state.img = img;
+          state.pts = [];
+          state.flipped = false;
+          state.zeroSlope = false;
+          state.resultB64 = null;
+          state.viewMode = 'calibration';
+          elCanvas.width = img.naturalWidth;
+          elCanvas.height = img.naturalHeight;
+          elCanvas.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
+          resetDecisionCards();
+          renderStudioUI();
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    elDropzone.addEventListener('click', () => elFileInput.click());
+    elBtnNewImg.addEventListener('click', () => elFileInput.click());
+    elFileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        loadImageFile(e.target.files[0]);
+        elFileInput.value = '';
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach((evt) => {
+      elViewportStage.addEventListener(evt, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        elViewportStage.classList.add('drag-over');
+      });
+    });
+    ['dragleave', 'drop'].forEach((evt) => {
+      elViewportStage.addEventListener(evt, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        elViewportStage.classList.remove('drag-over');
+      });
+    });
+    elViewportStage.addEventListener('drop', (e) => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) loadImageFile(f);
+    });
+
+    elCanvas.addEventListener('click', (e) => {
+      if (!state.img || state.analyzing) return;
+      if (state.pts.length >= 4 || (state.zeroSlope && state.pts.length >= 2)) return;
+      const r = elCanvas.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return;
+      const nx = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      const ny = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+      state.pts.push({ nx, ny });
+      renderStudioUI();
+    });
+
+    elBtnClear.addEventListener('click', () => {
+      if (state.analyzing) return;
+      state.file = null;
+      state.img = null;
+      state.pts = [];
+      state.flipped = false;
+      state.zeroSlope = false;
+      state.resultB64 = null;
+      state.viewMode = 'calibration';
+      resetDecisionCards();
+      renderStudioUI();
+    });
+
+    elBtnFlip.addEventListener('click', () => {
+      if (!state.img || state.analyzing) return;
+      state.flipped = !state.flipped;
+      state.pts = [];
+      state.zeroSlope = false;
+      state.resultB64 = null;
+      state.viewMode = 'calibration';
+      resetDecisionCards();
+      renderStudioUI();
+    });
+
+    elBtnZero.addEventListener('click', () => {
+      if (!state.img || state.analyzing) return;
+      state.zeroSlope = !state.zeroSlope;
+      if (state.zeroSlope) {
+        state.pts = state.pts.slice(0, 2);
+      }
+      state.resultB64 = null;
+      state.viewMode = 'calibration';
+      renderStudioUI();
+    });
+
+    elBtnReset.addEventListener('click', () => {
+      if (!state.img || state.analyzing) return;
+      state.pts = [];
+      state.zeroSlope = false;
+      state.resultB64 = null;
+      state.viewMode = 'calibration';
+      resetDecisionCards();
+      renderStudioUI();
+    });
+
+    elBtnToggleView.addEventListener('click', () => {
+      if (!state.resultB64 || state.analyzing) return;
+      state.viewMode = state.viewMode === 'result' ? 'calibration' : 'result';
+      renderStudioUI();
+    });
+
+    elBtnAnalyze.addEventListener('click', async () => {
+      if (!state.file || !isCalibrationComplete() || state.analyzing) return;
+
+      if (window.location.protocol === 'file:') {
+        showToast('Preview mode only: launch server.py or run Cell 4 in Google Colab to execute YOLOv8x + PyTorch inference.');
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append('image', state.file);
+      fd.append('att_nx', String(state.pts[0].nx));
+      fd.append('att_ny', String(state.pts[0].ny));
+      fd.append('def_nx', String(state.pts[1].nx));
+      fd.append('def_ny', String(state.pts[1].ny));
+      if (!state.zeroSlope && state.pts.length >= 4) {
+        fd.append('l1_nx', String(state.pts[2].nx));
+        fd.append('l1_ny', String(state.pts[2].ny));
+        fd.append('l2_nx', String(state.pts[3].nx));
+        fd.append('l2_ny', String(state.pts[3].ny));
+      }
+      fd.append('flipped', String(state.flipped));
+      fd.append('zero_slope', String(state.zeroSlope));
+
+      state.analyzing = true;
+      renderStudioUI();
+
+      try {
+        const res = await fetch('/api/analyze', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error((data && (data.error || data.detail)) || 'Analysis failed.');
+        }
+        state.analyzing = false;
+        applyAnalysisResult(data);
+      } catch (err) {
+        state.analyzing = false;
+        renderStudioUI();
+        showToast(err.message || 'Could not reach AI VAR backend.');
+      }
+    });
+
+    resetDecisionCards();
+    renderStudioUI();
+  </script>
+</body>
+</html>
